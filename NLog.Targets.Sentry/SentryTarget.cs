@@ -1,13 +1,13 @@
-﻿using NLog.Common;
-using NLog.Config;
-using SharpRaven;
-using SharpRaven.Data;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-
 using System.Reflection;
+using NLog.Common;
+using NLog.Config;
+using NLog.Layouts;
+using SharpRaven;
+using SharpRaven.Data;
 
 // ReSharper disable CheckNamespace
 
@@ -17,7 +17,6 @@ namespace NLog.Targets
     [Target("Sentry")]
     public class SentryTarget : TargetWithLayout
     {
-        private Dsn dsn;
         private TimeSpan clientTimeout;
         private LogLevel minLogLevelForEvent = LogLevel.Trace;
         private readonly Lazy<IRavenClient> client;
@@ -94,11 +93,7 @@ namespace NLog.Targets
         /// The DSN for the Sentry host
         /// </summary>
         [RequiredParameter]
-        public string Dsn
-        {
-            get { return this.dsn?.ToString(); }
-            set { this.dsn = new Dsn(value); }
-        }
+        public Layout Dsn { get; set; }
 
         /// <summary>
         /// Gets or sets the minimum log level required to trigger a Sentry event.
@@ -115,7 +110,7 @@ namespace NLog.Targets
         /// <summary>
         /// Gets or sets the environment name to send with the event logs.
         /// </summary>
-        public string Environment { get; set; }
+        public Layout Environment { get; set; }
 
         /// <summary>
         /// Gets or sets the type of version number to send with the logs.
@@ -131,8 +126,8 @@ namespace NLog.Targets
         /// </summary>
         public string Timeout
         {
-            get { return this.clientTimeout.ToString("c"); }
-            set { this.clientTimeout = TimeSpan.ParseExact(value, "c", CultureInfo.InvariantCulture); }
+            get => clientTimeout.ToString("c");
+            set => clientTimeout = TimeSpan.ParseExact(value, "c", CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -150,7 +145,7 @@ namespace NLog.Targets
         /// </summary>
         public SentryTarget()
         {
-            this.client = new Lazy<IRavenClient>(this.DefaultClientFactory);
+            this.client = new Lazy<IRavenClient>(DefaultClientFactory);
         }
 
         /// <summary>
@@ -172,7 +167,7 @@ namespace NLog.Targets
             {
                 if (logEvent.Level >= this.minLogLevelForEvent)
                 {
-                    if (logEvent.Exception == null && this.IgnoreEventsWithNoException)
+                    if (logEvent.Exception == null && IgnoreEventsWithNoException)
                     {
                         return;
                     }
@@ -183,8 +178,8 @@ namespace NLog.Targets
                         eventProperties = logEvent.Properties.ToDictionary(x => x.Key.ToString(), x => x.Value?.ToString());
                     }
 
-                    var tags = this.SendLogEventInfoPropertiesAsTags ? eventProperties : null;
-                    var extras = this.SendLogEventInfoPropertiesAsTags ? null : eventProperties;
+                    var tags = SendLogEventInfoPropertiesAsTags ? eventProperties : null;
+                    var extras = SendLogEventInfoPropertiesAsTags ? null : eventProperties;
 
                     this.client.Value.Logger = logEvent.LoggerName;
 
@@ -192,7 +187,7 @@ namespace NLog.Targets
                     // those kinds of events then we'll send a "Message" to Sentry
                     if (logEvent.Exception == null)
                     {
-                        var sentryMessage = new SentryMessage(this.Layout.Render(logEvent));
+                        var sentryMessage = new SentryMessage(Layout.Render(logEvent));
                         var msg = new SentryEvent(sentryMessage)
                         {
                             Level = LoggingLevelMap[logEvent.Level],
@@ -239,7 +234,7 @@ namespace NLog.Targets
             }
             catch (Exception ex)
             {
-                this.LogException(ex);
+                LogException(ex);
                 throw;  // Notify NLog about failure, so fallback/retry can be performed
             }
         }
@@ -269,11 +264,13 @@ namespace NLog.Targets
         /// <returns>New instance of a RavenClient.</returns>
         private IRavenClient DefaultClientFactory()
         {
-            var ravenClient = new RavenClient(this.dsn)
+            var renderedDsn = Dsn.Render(LogEventInfo.CreateNullEvent());
+            var renderedEnvironment = Environment?.Render(LogEventInfo.CreateNullEvent());
+            var ravenClient = new RavenClient(renderedDsn)
             {
-                ErrorOnCapture = this.LogException,
+                ErrorOnCapture = LogException,
                 Timeout = this.clientTimeout,
-                Environment = this.Environment,
+                Environment = renderedEnvironment,
                 Release = GetVersion(),
             };
 
@@ -292,7 +289,7 @@ namespace NLog.Targets
 
         private string GetVersion()
         {
-            switch (versionNumberType)
+            switch (this.versionNumberType)
             {
                 case Targets.VersionNumberType.AssemblyVersion:
                     return RootAssembly?.GetName().Version.ToString();

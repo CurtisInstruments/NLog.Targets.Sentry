@@ -1,11 +1,11 @@
-﻿using Moq;
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using Moq;
 using NLog.Config;
 using NUnit.Framework;
 using SharpRaven;
 using SharpRaven.Data;
-using System;
-using System.Collections.Generic;
-using System.Globalization;
 
 namespace NLog.Targets.Sentry.UnitTests
 {
@@ -25,6 +25,22 @@ namespace NLog.Targets.Sentry.UnitTests
         }
 
         [Test]
+        public void TestInitialization()
+        {
+            var sentryTarget = new SentryTarget
+            {
+                Dsn = "http://25e27038b1df4930b93c96c170d95527:d87ac60bb07b4be8908845b23e914dae@test/4",
+                Environment = "Test",
+                Timeout = "00:00:10",
+            };
+
+            var logEventInfo = LogEventInfo.CreateNullEvent();
+            Assert.AreEqual("http://25e27038b1df4930b93c96c170d95527:d87ac60bb07b4be8908845b23e914dae@test/4", sentryTarget.Dsn.Render(logEventInfo));
+            Assert.AreEqual("Test", sentryTarget.Environment.Render(logEventInfo));
+            Assert.AreEqual("00:00:10", sentryTarget.Timeout);
+        }
+
+        [Test]
         public void TestPublicConstructor()
         {
             // ReSharper disable ObjectCreationAsStatement
@@ -38,14 +54,6 @@ namespace NLog.Targets.Sentry.UnitTests
                 configuration.LoggingRules.Add(new LoggingRule("*", LogLevel.Trace, sentryTarget));
                 LogManager.Configuration = configuration;
             });
-        }
-
-        [Test]
-        public void TestBadDsn()
-        {
-            // ReSharper disable ObjectCreationAsStatement
-            Assert.Throws<ArgumentException>(() => new SentryTarget(null) { Dsn = "http://localhost" });
-            // ReSharper restore ObjectCreationAsStatement
         }
 
         [Test]
